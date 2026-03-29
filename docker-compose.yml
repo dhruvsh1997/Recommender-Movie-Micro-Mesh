@@ -1,0 +1,97 @@
+# ============================================================
+# Docker Compose — Recommender Micro-Mesh
+#
+# Orchestrates 4 services:
+#   1. redis         — Feature Store (bridge between services)
+#   2. user-service   — Django (user profiles, ratings, Redis sync)
+#   3. ml-service     — FastAPI (ML inference, reads from Redis)
+#   4. gateway        — FastAPI (API Gateway, routes & aggregates)
+#
+# Service Discovery: Docker Compose creates a default network
+# where each service is reachable by its service name as hostname.
+# e.g., the gateway reaches the ML service at http://ml-service:8001
+# ============================================================
+
+services:
+
+  # ------------------------------------------------------------------
+  # Redis — Feature Store
+  # The bridge between User Service (writes) and ML Service (reads).
+  # Implements the Eventual Consistency pattern.
+  # ------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: rmm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # User Service — Django + DRF
+  # Source of truth for user data. Syncs ratings to Redis on save.
+  # ------------------------------------------------------------------
+  user-service:
+    build: ./user_service
+    container_name: rmm-user-service
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DJANGO_SECRET_KEY=docker-compose-dev-secret-key
+      - DEBUG=True
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Recommendation Service — FastAPI + NumPy
+  # Stateless ML inference. Reads user vectors from Redis.
+  # In production, this would run on GPU-enabled nodes.
+  # ------------------------------------------------------------------
+  ml-service:
+    build: ./ml_service
+    container_name: rmm-ml-service
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SERVICE_PORT=8001
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # API Gateway — FastAPI + HTTPX
+  # Single entry point. Routes requests, aggregates responses.
+  # Implements Circuit Breaker for ML service failures.
+  # ------------------------------------------------------------------
+  gateway:
+    build: ./gateway
+    container_name: rmm-gateway
+    ports:
+      - "8002:8002"
+    environment:
+      - USER_SERVICE_URL=http://user-service:8000
+      - ML_SERVICE_URL=http://ml-service:8001
+      - SERVICE_PORT=8002
+    depends_on:
+      - user-service
+      - ml-service
+    restart: unless-stopped
+
+# ------------------------------------------------------------------
+# Volumes — Persist Redis data across container restarts
+# ------------------------------------------------------------------
+volumes:
+  redis-data:
