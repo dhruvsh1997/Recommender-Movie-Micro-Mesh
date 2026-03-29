@@ -1,0 +1,237 @@
+1. User Service (port 8000)
+Create Users:
+bash# Create user Alice
+curl -X POST http://localhost:8000/api/users/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "email": "alice@example.com"}'
+
+# Create user Bob
+curl -X POST http://localhost:8000/api/users/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "bob", "email": "bob@example.com"}'
+
+# Create user Charlie
+curl -X POST http://localhost:8000/api/users/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "charlie", "email": "charlie@example.com"}'
+List All Users:
+bashcurl http://localhost:8000/api/users/
+Get Single User:
+bash# Get user with ID 1
+curl http://localhost:8000/api/users/1/
+
+# Get user with ID 2
+curl http://localhost:8000/api/users/2/
+Update User:
+bash# Full update (PUT)
+curl -X PUT http://localhost:8000/api/users/1/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice_updated", "email": "alice_new@example.com"}'
+
+# Partial update (PATCH)
+curl -X PATCH http://localhost:8000/api/users/2/ \
+  -H "Content-Type: application/json" \
+  -d '{"email": "bob_updated@example.com"}'
+Delete User:
+bashcurl -X DELETE http://localhost:8000/api/users/3/
+Submit Ratings (triggers Redis sync):
+bash# Alice rates The Matrix (ID=1) — 5 stars
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 1, "movie_id": 1, "score": 5.0}'
+
+# Alice rates Inception (ID=2) — 4.5 stars
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 1, "movie_id": 2, "score": 4.5}'
+
+# Alice rates Interstellar (ID=3) — 4.8 stars
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 1, "movie_id": 3, "score": 4.8}'
+
+# Bob rates Pulp Fiction (ID=5) — 5 stars
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 2, "movie_id": 5, "score": 5.0}'
+
+# Bob rates The Godfather (ID=9) — 4.5 stars
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 2, "movie_id": 9, "score": 4.5}'
+
+# Bob rates Goodfellas (ID=10) — 4.0 stars
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 2, "movie_id": 10, "score": 4.0}'
+Get User Ratings:
+bash# All of Alice's ratings
+curl http://localhost:8000/api/users/1/ratings/
+
+# All of Bob's ratings
+curl http://localhost:8000/api/users/2/ratings/
+List All Ratings:
+bashcurl http://localhost:8000/api/ratings/
+Update a Rating:
+bash# Change Alice's Matrix rating from 5.0 to 3.5 (use the rating ID, not movie ID)
+curl -X PATCH http://localhost:8000/api/ratings/1/ \
+  -H "Content-Type: application/json" \
+  -d '{"score": 3.5}'
+Delete a Rating:
+bash# Delete rating with ID 1
+curl -X DELETE http://localhost:8000/api/ratings/1/
+Validation Error Cases:
+bash# Score out of range — should return 400
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 1, "movie_id": 4, "score": 7.0}'
+
+# Negative movie_id — should return 400
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 1, "movie_id": -1, "score": 3.0}'
+
+# Missing required field — should return 400
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 1, "score": 4.0}'
+
+# Non-existent user — should return 400
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 999, "movie_id": 1, "score": 4.0}'
+
+# Duplicate rating (same user + movie) — should return 400
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 1, "movie_id": 2, "score": 3.0}'
+
+# Non-existent user profile — should return 404
+curl http://localhost:8000/api/users/999/
+
+2. Recommendation Service (port 8001)
+Health Check:
+bashcurl http://localhost:8001/health
+List Movie Catalog:
+bashcurl http://localhost:8001/movies
+Get Recommendations:
+bash# Recommendations for Alice (sci-fi fan) — default top 5
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 1}'
+
+# Recommendations for Bob (crime fan) — top 3
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 2, "top_n": 3}'
+
+# Recommendations for Bob — top 10
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 2, "top_n": 10}'
+
+# Unknown user — should return fallback popular movies
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 999}'
+Validation Error Cases:
+bash# Invalid user_id (zero) — should return 422
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 0}'
+
+# Negative user_id — should return 422
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": -5}'
+
+# top_n exceeds max (15) — should return 422
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 1, "top_n": 50}'
+
+# Missing user_id — should return 422
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"top_n": 5}'
+
+# Wrong type (string instead of int) — should return 422
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice"}'
+
+# Empty body — should return 422
+curl -X POST http://localhost:8001/recommend \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+3. API Gateway (port 8002)
+Aggregate Health Check:
+bashcurl http://localhost:8002/health | python3 -m json.tool
+Get Recommendations via Gateway:
+bash# Alice's recommendations (default top 5)
+curl http://localhost:8002/recommendations/1 | python3 -m json.tool
+
+# Bob's recommendations — top 3
+curl "http://localhost:8002/recommendations/2?top_n=3" | python3 -m json.tool
+
+# Top 10 for user 1
+curl "http://localhost:8002/recommendations/1?top_n=10" | python3 -m json.tool
+
+# Unknown user — should return fallback
+curl http://localhost:8002/recommendations/999 | python3 -m json.tool
+Proxy — Get User via Gateway:
+bashcurl http://localhost:8002/users/1 | python3 -m json.tool
+
+# Non-existent user — should return 404
+curl http://localhost:8002/users/999
+Proxy — Get Ratings via Gateway:
+bashcurl http://localhost:8002/users/1/ratings | python3 -m json.tool
+curl http://localhost:8002/users/2/ratings | python3 -m json.tool
+
+4. Redis Verification (Feature Store)
+bash# Check what's stored for user 1
+docker compose exec redis redis-cli GET user:1:vector
+
+# Check user 2
+docker compose exec redis redis-cli GET user:2:vector
+
+# List all user vector keys
+docker compose exec redis redis-cli KEYS "user:*:vector"
+
+# Check if Redis is alive
+docker compose exec redis redis-cli PING
+
+5. Full Flow — Rate Then Recommend
+This is the most important test — it validates the entire pipeline (Django save → Redis sync → FastAPI reads → recommendation changes).
+bash# Step 1: Check Alice's current recommendations
+curl http://localhost:8002/recommendations/1 | python3 -m json.tool
+
+# Step 2: Alice rates Fight Club (ID=6) highly
+curl -X POST http://localhost:8000/api/ratings/ \
+  -H "Content-Type: application/json" \
+  -d '{"user": 1, "movie_id": 6, "score": 5.0}'
+
+# Step 3: Verify Redis was updated
+docker compose exec redis redis-cli GET user:1:vector
+
+# Step 4: Check recommendations again — should shift toward
+#          thriller/psychological movies now
+curl http://localhost:8002/recommendations/1 | python3 -m json.tool
+
+6. Circuit Breaker Test
+bash# Step 1: Stop the ML service
+docker compose stop ml-service
+
+# Step 2: Hit the gateway — should return fallback popular movies
+#         with "source": "fallback_popular" and "service_status": "degraded"
+curl http://localhost:8002/recommendations/1 | python3 -m json.tool
+
+# Step 3: Health check should show ML service as unreachable
+curl http://localhost:8002/health | python3 -m json.tool
+
+# Step 4: Restart ML service — everything recovers
+docker compose start ml-service
+sleep 3
+curl http://localhost:8002/recommendations/1 | python3 -m json.tool
+The circuit breaker test (section 6) is particularly worth running — it demonstrates that the system degrades gracefully instead of crashing when the ML service goes down, which is the core value proposition of the microservices split.
