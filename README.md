@@ -56,7 +56,7 @@ docker compose exec user-service python manage.py seed_data
 ## Quick Start (Local Development)
 
 ```bash
-# 1. Start Redis
+# 1. Start Redis Service
 docker run -d --name redis-dev -p 6379:6379 redis:7-alpine
 
 # 2. Start User Service
