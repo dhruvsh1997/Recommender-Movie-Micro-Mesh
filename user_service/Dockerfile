@@ -22,7 +22,11 @@ COPY . .
 
 # Run migrations at build time for SQLite
 # (In production with PostgreSQL, migrations run as an init container)
+# Run migrations
 RUN python manage.py migrate --noinput
+
+# Collect static files (THIS FIXES YOUR ISSUE)
+RUN python manage.py collectstatic --noinput
 
 # Expose Django's default port
 EXPOSE 8000
